@@ -17,7 +17,7 @@ from langchain.memory import ConversationBufferMemory
 
 # --- Configuration ---
 # --- Configuration ---
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "API_Key請輸入你的Gemini api")  # Use st.secrets for deployment
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "請輸入你的Gemini API")  # Use st.secrets for deployment
 TEMP_DATA_STORAGE = "temp_data_simplified_agent/"
 os.makedirs(TEMP_DATA_STORAGE, exist_ok=True)
 
@@ -39,9 +39,15 @@ class PlaceholderLLM:
         st.warning(f"Using PlaceholderLLM for {self.model_name} as API key is not set or invalid.")
 
     def invoke(self, prompt_input):
-        prompt_str = str(prompt_input)
+        prompt_str = str(prompt_input)  # prompt_input can be a PromptValue or a string
 
-        if "panel of expert department heads" in prompt_str:  # New: Individual perspectives prompt
+        # Ensure prompt_input is converted to string for checks
+        if hasattr(prompt_input, 'to_string'):
+            prompt_str_content = prompt_input.to_string()
+        else:
+            prompt_str_content = str(prompt_input)
+
+        if "panel of expert department heads" in prompt_str_content:  # New: Individual perspectives prompt
             return {"text": """
 *Placeholder Individual Perspectives ({model_name}):*
 
@@ -70,7 +76,7 @@ class PlaceholderLLM:
 * How effective do our recent marketing campaigns appear to be, if reflected here?
 * What market trends or shifts in customer preference can be inferred?
 """.format(model_name=self.model_name)}
-        elif "The following individual perspectives and questions have been generated" in prompt_str:  # New: Synthesis prompt
+        elif "The following individual perspectives and questions have been generated" in prompt_str_content:  # New: Synthesis prompt
             return {"text": """
 *Placeholder Synthesized Suggestions (based on prior perspectives from {model_name}):*
 1.  **Strategic Financial Review:** Analyze detailed sales trends (CEO) against product profitability metrics (CFO) to identify high-impact areas for growth.
@@ -79,8 +85,8 @@ class PlaceholderLLM:
 4.  **Cost-Benefit Analysis for Innovation:** Explore cost drivers (CFO) related to potential tech-driven innovations (CTO) for strategic initiatives (CEO).
 5.  **Data Quality for Campaign Efficacy:** Evaluate if current data quality and systems (CTO) are sufficient for accurately measuring marketing campaign effectiveness (CMO) and operational performance (COO).
 """.format(model_name=self.model_name)}
-        elif "Python code:" in prompt_str and "User Query:" in prompt_str:  # Code generation
-            user_query_segment = prompt_str.split("User Query:")[1].split("\n")[0].lower()
+        elif "Python code:" in prompt_str_content and "User Query:" in prompt_str_content:  # Code generation
+            user_query_segment = prompt_str_content.split("User Query:")[1].split("\n")[0].lower()
             if "average sales" in user_query_segment:
                 return {"text": "analysis_result = df['sales'].mean()\nplot_data_df = df[['sales']].copy()"}
             elif "plot" in user_query_segment:
@@ -88,10 +94,10 @@ class PlaceholderLLM:
                     "text": "import matplotlib.pyplot as plt\nfig, ax = plt.subplots()\nax.hist(df.iloc[:, 0])\nplot_path = 'placeholder_plot.png'\nplt.savefig(plot_path)\nplt.close(fig)\nanalysis_result = plot_path\nplot_data_df = df.copy()"}
             else:
                 return {"text": "analysis_result = df.head()\nplot_data_df = df.head()"}
-        elif "Generate a textual report" in prompt_str:
+        elif "Generate a textual report" in prompt_str_content:
             return {
                 "text": f"### Placeholder Report ({self.model_name})\nThis is a placeholder report based on the provided data."}
-        elif "Critique the following analysis artifacts" in prompt_str:  # Judging prompt
+        elif "Critique the following analysis artifacts" in prompt_str_content:  # Judging prompt
             return {"text": f"""
 ### Placeholder Critique ({self.model_name})
 **Overall Assessment:** The worker AI's output seems to be a placeholder.
@@ -102,7 +108,7 @@ class PlaceholderLLM:
 """}
         else:
             return {
-                "text": f"Placeholder response from {self.model_name} for unrecognized prompt: {prompt_str[:200]}..."}
+                "text": f"Placeholder response from {self.model_name} for unrecognized prompt: {prompt_str_content[:200]}..."}
 
 
 def get_llm_instance(model_name: str):
@@ -119,16 +125,12 @@ def get_llm_instance(model_name: str):
             st.session_state.llm_cache[model_name] = PlaceholderLLM(model_name)
         else:
             try:
-                # Adjust temperature based on role (e.g. judge more creative, worker more precise)
-                # For Gemini, temperature is a float between 0.0 and 1.0 (sometimes 2.0 depending on model version)
-                # A temperature of 0.0 is deterministic. Higher values increase randomness.
-                # For judge, slightly higher might be good for diverse critiques. For worker, lower for factual tasks.
                 temperature = 0.6 if st.session_state.get("selected_judge_model", "") == model_name else 0.3
                 llm = ChatGoogleGenerativeAI(
                     model=model_name,
                     google_api_key=LLM_API_KEY,
                     temperature=temperature,
-                    convert_system_message_to_human=True  # Important for some Langchain versions with Gemini
+                    convert_system_message_to_human=True
                 )
                 st.session_state.llm_cache[model_name] = llm
             except Exception as e:
@@ -145,7 +147,6 @@ def load_csv_and_get_summary(uploaded_file):
         st.session_state.data_source_name = uploaded_file.name
         st.session_state.current_analysis_artifacts = {}  # Reset artifacts on new data
 
-        # Create a more detailed summary
         data_summary = {
             "source_name": uploaded_file.name,
             "num_rows": len(df),
@@ -154,7 +155,6 @@ def load_csv_and_get_summary(uploaded_file):
             "dtypes": {col: str(df[col].dtype) for col in df.columns},
             "missing_values_per_column": df.isnull().sum().to_dict(),
             "descriptive_stats_sample": df.describe(include='all').to_dict() if not df.empty else "N/A",
-            # include all for non-numeric too
             "preview_head": df.head().to_dict(orient='records'),
             "preview_tail": df.tail().to_dict(orient='records')
         }
@@ -175,32 +175,27 @@ class LocalCodeExecutionEngine:
 
         local_scope = {'df': df_input.copy(), 'pd': pd, 'plt': matplotlib.pyplot, 'sns': seaborn}
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        plot_data_df_saved_path = None  # Path for CSV data used in plot
+        plot_data_df_saved_path = None
 
         try:
-            # Ensure 'analysis_result' and 'plot_data_df' are initialized in the scope
-            # This helps avoid NameError if the LLM doesn't define them under certain conditions
             local_scope[
                 'analysis_result'] = "Code executed, but 'analysis_result' was not explicitly set by the script."
-            local_scope['plot_data_df'] = None  # Initialize plot_data_df
+            local_scope['plot_data_df'] = None
 
-            exec(code_string, globals(), local_scope)  # globals() provides access to imported modules like pd, plt
+            exec(code_string, globals(), local_scope)
 
             analysis_result = local_scope.get('analysis_result')
-            plot_data_df = local_scope.get('plot_data_df')  # Retrieve plot_data_df from scope
+            plot_data_df = local_scope.get('plot_data_df')
 
             if isinstance(analysis_result, str) and analysis_result.startswith("Error:"):
                 return {"type": "error", "message": analysis_result}
 
-            # Handling plots
             if isinstance(analysis_result, str) and analysis_result.endswith((".png", ".jpg", ".jpeg", ".svg")):
                 relative_plot_path = os.path.basename(analysis_result)
-                # Check if the plot path is absolute or relative and if it exists
-                # The code might save it directly in TEMP_DATA_STORAGE or a local path
                 potential_paths = [
-                    os.path.join(TEMP_DATA_STORAGE, relative_plot_path),  # LLM was told to save here
-                    analysis_result,  # LLM provided an absolute path
-                    relative_plot_path  # LLM provided a relative path (e.g. if running locally)
+                    os.path.join(TEMP_DATA_STORAGE, relative_plot_path),
+                    analysis_result,
+                    relative_plot_path
                 ]
                 final_plot_path = None
                 for p_path in potential_paths:
@@ -212,21 +207,19 @@ class LocalCodeExecutionEngine:
                     return {"type": "error",
                             "message": f"Plot file '{relative_plot_path}' not found. Checked: {potential_paths}"}
 
-                # Save the dataframe that was used for plotting, if provided
                 if isinstance(plot_data_df, pd.DataFrame) and not plot_data_df.empty:
                     plot_data_filename = f"plot_data_for_{os.path.splitext(relative_plot_path)[0]}_{timestamp}.csv"
                     plot_data_df_saved_path = os.path.join(TEMP_DATA_STORAGE, plot_data_filename)
                     plot_data_df.to_csv(plot_data_df_saved_path, index=False)
-                elif plot_data_df is not None:  # It was set but not a dataframe or empty
+                elif plot_data_df is not None:
                     st.warning(
                         "`plot_data_df` was set by the script but is not a valid DataFrame. Not saving associated data.")
 
                 return {"type": "plot", "plot_path": final_plot_path, "data_path": plot_data_df_saved_path}
 
-            # Handling tables (DataFrames or Series)
             elif isinstance(analysis_result, (pd.DataFrame, pd.Series)):
                 if isinstance(analysis_result, pd.Series):
-                    analysis_result = analysis_result.to_frame()  # Convert Series to DataFrame for consistency
+                    analysis_result = analysis_result.to_frame()
 
                 if analysis_result.empty:
                     return {"type": "text", "value": "The analysis resulted in an empty table."}
@@ -236,11 +229,9 @@ class LocalCodeExecutionEngine:
                 analysis_result.to_csv(saved_csv_path, index=False)
                 return {"type": "table", "data_path": saved_csv_path}
 
-            # Handling text results (including the default message if analysis_result wasn't set)
             else:
                 return {"type": "text", "value": str(analysis_result)}
         except Exception as e:
-            # Capture more details from the execution error
             import traceback
             tb_str = traceback.format_exc()
             return {"type": "error", "message": f"Error during code execution: {str(e)}\nTraceback:\n{tb_str}"}
@@ -265,19 +256,18 @@ if "data_summary" not in st.session_state:
     st.session_state.data_summary = None
 if "data_source_name" not in st.session_state:
     st.session_state.data_source_name = None
-if "current_analysis_artifacts" not in st.session_state:  # Stores code, paths to data/plot/report for judging
+if "current_analysis_artifacts" not in st.session_state:
     st.session_state.current_analysis_artifacts = {}
 if "selected_worker_model" not in st.session_state:
     st.session_state.selected_worker_model = DEFAULT_WORKER_MODEL
 if "selected_judge_model" not in st.session_state:
     st.session_state.selected_judge_model = DEFAULT_JUDGE_MODEL
 
-if "lc_memory" not in st.session_state:  # Langchain conversation memory
+if "lc_memory" not in st.session_state:
     st.session_state.lc_memory = ConversationBufferMemory(memory_key="chat_history", return_messages=False,
-                                                          input_key="user_query")  # input_key matches what we save
+                                                          input_key="user_query")
 
 # --- Prompt Templates ---
-# NEW: Prompt for individual perspectives
 individual_perspectives_prompt_template = PromptTemplate(
     input_variables=["data_summary", "chat_history"],
     template="""You are a panel of expert department heads. A user has uploaded a CSV file.
@@ -301,7 +291,6 @@ Detailed Perspectives from Department Heads:
 """
 )
 
-# MODIFIED: Prompt to synthesize suggestions based on prior perspectives
 synthesize_analysis_suggestions_prompt_template = PromptTemplate(
     input_variables=["data_summary", "chat_history", "generated_perspectives"],
     template="""You are a strategic analysis consultant AI. A user has uploaded a CSV file.
@@ -338,15 +327,15 @@ Previous Conversation (for context):
 Your task is to generate a Python script to perform the requested analysis on a pandas DataFrame named `df`.
 1.  The result of the analysis should be stored in a variable named `analysis_result`.
 2.  If the analysis involves creating a plot:
-    a.  Save the plot to a file named 'analysis_plot.png' in the current working directory.
-    b.  Set `analysis_result` to the string 'analysis_plot.png'.
+    a.  Save the plot to a file named 'analysis_plot.png' in the current working directory. You can use '{TEMP_DATA_STORAGE}analysis_plot.png' to save it in the designated temp folder.
+    b.  Set `analysis_result` to the string 'analysis_plot.png' (or the full path if you saved it to TEMP_DATA_STORAGE).
     c.  Create a pandas DataFrame named `plot_data_df` containing the exact data used for the plot. If the plot uses the entire `df`, then `plot_data_df = df.copy()`.
 3.  If the analysis results in a table (e.g., a filtered DataFrame, a summary table), `analysis_result` should be this DataFrame or Series.
 4.  If the analysis results in a single textual or numerical value, `analysis_result` should be this value.
 5.  Ensure all necessary libraries (like matplotlib.pyplot as plt, seaborn as sns) are imported within the script if used.
 Do not include any explanations or markdown formatting around the code. Output only the raw Python code.
 
-Python code:"""
+Python code:""".replace("{TEMP_DATA_STORAGE}", TEMP_DATA_STORAGE)  # Inject storage path
 )
 
 report_generation_prompt_template = PromptTemplate(
@@ -379,7 +368,7 @@ Report:"""
 
 judging_prompt_template = PromptTemplate(
     input_variables=["python_code", "data_csv_content", "report_text_content", "original_user_query", "data_summary",
-                     "plot_image_path", "plot_info"],  # Added plot_info
+                     "plot_image_path", "plot_info"],
     template="""You are an expert data science reviewer and critique AI.
 Your task is to meticulously evaluate the analysis artifacts produced by another AI assistant in response to a user query.
 
@@ -396,7 +385,9 @@ Original Data Summary (of the input dataset): {data_summary}
     ```csv
     {data_csv_content}
     ```
-    {plot_info}  3.  Generated Report (if applicable):
+    {plot_info}
+
+3.  Generated Report (if applicable):
     ```text
     {report_text_content}
     ```
@@ -462,12 +453,11 @@ with st.sidebar:
                             "user_query": f"Uploaded {st.session_state.data_source_name} and requested initial perspectives."},
                         {"output": "Processing CSV and preparing for perspective generation."}
                     )
-                    st.session_state.current_analysis_artifacts = {}  # Clear previous artifacts
+                    st.session_state.current_analysis_artifacts = {}
 
                     worker_llm = get_llm_instance(st.session_state.selected_worker_model)
                     if worker_llm and st.session_state.data_summary:
                         perspectives_text = ""
-                        # STAGE 1: Get Individual Perspectives
                         with st.spinner(
                                 f"🧠 {st.session_state.selected_worker_model} is consulting with department heads for initial perspectives..."):
                             try:
@@ -478,10 +468,16 @@ with st.sidebar:
                                 }
                                 formatted_perspectives_prompt = individual_perspectives_prompt_template.format_prompt(
                                     **perspectives_prompt_inputs)
-                                perspectives_response = worker_llm.invoke(formatted_perspectives_prompt.to_string())
-                                perspectives_text = perspectives_response.content if hasattr(perspectives_response,
-                                                                                             'content') else perspectives_response.get(
-                                    'text', str(perspectives_response))
+
+                                # Handle both string and AIMessage/HumanMessage from invoke
+                                perspectives_response_obj = worker_llm.invoke(formatted_perspectives_prompt)
+                                if hasattr(perspectives_response_obj, 'content'):  # For AIMessage
+                                    perspectives_text = perspectives_response_obj.content
+                                elif isinstance(perspectives_response_obj,
+                                                dict) and 'text' in perspectives_response_obj:  # For PlaceholderLLM
+                                    perspectives_text = perspectives_response_obj['text']
+                                else:  # For direct string response (older Langchain versions or simpler LLMs)
+                                    perspectives_text = str(perspectives_response_obj)
 
                                 st.session_state.messages.append({
                                     "role": "assistant",
@@ -489,21 +485,19 @@ with st.sidebar:
                                 })
                                 st.session_state.lc_memory.save_context(
                                     {"user_query": "System requested individual department perspectives."},
-                                    {"output": f"Provided perspectives: {perspectives_text[:200]}..."}  # Log snippet
+                                    {"output": f"Provided perspectives: {perspectives_text[:200]}..."}
                                 )
                             except Exception as e:
                                 st.error(f"Error getting individual perspectives: {e}")
                                 st.session_state.messages.append(
                                     {"role": "assistant", "content": f"Error getting perspectives: {e}"})
-                                perspectives_text = "Error generating perspectives."  # Ensure it has a value
+                                perspectives_text = "Error generating perspectives."
 
-                        # STAGE 2: Synthesize Suggestions based on Perspectives
                         if perspectives_text and "Error generating perspectives." not in perspectives_text:
                             with st.spinner(
                                     f"🛠️ {st.session_state.selected_worker_model} is synthesizing actionable suggestions..."):
                                 try:
-                                    memory_context = st.session_state.lc_memory.load_memory_variables(
-                                        {})  # Reload for fresh history
+                                    memory_context = st.session_state.lc_memory.load_memory_variables({})
                                     synthesis_prompt_inputs = {
                                         "data_summary": json.dumps(st.session_state.data_summary, indent=2),
                                         "chat_history": memory_context.get("chat_history", ""),
@@ -511,10 +505,14 @@ with st.sidebar:
                                     }
                                     formatted_synthesis_prompt = synthesize_analysis_suggestions_prompt_template.format_prompt(
                                         **synthesis_prompt_inputs)
-                                    synthesis_response = worker_llm.invoke(formatted_synthesis_prompt.to_string())
-                                    strategy_text = synthesis_response.content if hasattr(synthesis_response,
-                                                                                          'content') else synthesis_response.get(
-                                        'text', str(synthesis_response))
+
+                                    synthesis_response_obj = worker_llm.invoke(formatted_synthesis_prompt)
+                                    if hasattr(synthesis_response_obj, 'content'):
+                                        strategy_text = synthesis_response_obj.content
+                                    elif isinstance(synthesis_response_obj, dict) and 'text' in synthesis_response_obj:
+                                        strategy_text = synthesis_response_obj['text']
+                                    else:
+                                        strategy_text = str(synthesis_response_obj)
 
                                     st.session_state.messages.append({
                                         "role": "assistant",
@@ -531,8 +529,6 @@ with st.sidebar:
                                         {"role": "assistant", "content": f"Error synthesizing suggestions: {e}"})
                         else:
                             st.warning("Skipping synthesis of suggestions due to error in generating perspectives.")
-
-
                     else:
                         st.error("Worker LLM or data summary not available for generating suggestions.")
                     st.rerun()
@@ -543,12 +539,11 @@ with st.sidebar:
         st.subheader("File Loaded:")
         st.write(f"{st.session_state.data_source_name} ({len(st.session_state.current_dataframe)} rows)")
         with st.expander("View Data Summary & Details"):
-            st.json(st.session_state.data_summary)  # The summary is now more detailed
+            st.json(st.session_state.data_summary)
         with st.expander("View DataFrame Head (First 5 rows)"):
             st.dataframe(st.session_state.current_dataframe.head())
 
         if st.button("Clear Loaded Data & Chat"):
-            # Reset relevant session state variables
             keys_to_reset = [
                 "current_dataframe", "data_summary", "data_source_name",
                 "current_analysis_artifacts", "messages", "lc_memory"
@@ -557,15 +552,13 @@ with st.sidebar:
                 if key in st.session_state:
                     del st.session_state[key]
 
-            # Re-initialize messages and memory
             st.session_state.messages = [
                 {"role": "assistant", "content": "Data and chat reset. Upload a new CSV file."}]
             st.session_state.lc_memory = ConversationBufferMemory(memory_key="chat_history", return_messages=False,
                                                                   input_key="user_query")
 
-            # Clean up temporary files
             for item in os.listdir(TEMP_DATA_STORAGE):
-                if item.endswith((".png", ".csv", ".txt", ".jpg", ".jpeg", ".svg")):  # Added more extensions
+                if item.endswith((".png", ".csv", ".txt", ".jpg", ".jpeg", ".svg")):
                     try:
                         os.remove(os.path.join(TEMP_DATA_STORAGE, item))
                     except Exception as e:
@@ -585,22 +578,19 @@ for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-        # Displaying artifacts and buttons for report/judging
         if message["role"] == "assistant" and "executed_result" in message:
             executed_res = message["executed_result"]
             res_type = executed_res.get("type")
-            # original_query should be reliably present if code was executed
             original_query = message.get("original_user_query", "Unknown query that led to this result")
 
             if res_type == "table":
                 try:
                     df_to_display = pd.read_csv(executed_res["data_path"])
                     st.dataframe(df_to_display)
-                    # Button to generate report for this table
                     if st.button(f"📊 Generate Report for this Table##{i}", key=f"report_table_btn_{i}"):
                         st.session_state.trigger_report_generation = True
                         st.session_state.report_target_data_path = executed_res["data_path"]
-                        st.session_state.report_target_query = original_query  # Pass the query
+                        st.session_state.report_target_query = original_query
                         st.rerun()
                 except Exception as e:
                     st.error(f"Error displaying table from {executed_res['data_path']}: {e}")
@@ -608,66 +598,58 @@ for i, message in enumerate(st.session_state.messages):
             elif res_type == "plot":
                 if os.path.exists(executed_res["plot_path"]):
                     st.image(executed_res["plot_path"])
-                    # If there's associated data with the plot, allow report generation
                     if executed_res.get("data_path") and os.path.exists(executed_res["data_path"]):
                         if st.button(f"📄 Generate Report for Plot Data##{i}", key=f"report_plot_data_btn_{i}"):
                             st.session_state.trigger_report_generation = True
                             st.session_state.report_target_data_path = executed_res["data_path"]
-                            st.session_state.report_target_query = original_query  # Pass the query
-                            st.rerun()
-                    else:
-                        # Offer to generate a report describing the plot itself if no data CSV
-                        if st.button(f"📄 Generate Descriptive Report for Plot##{i}", key=f"report_plot_desc_btn_{i}"):
-                            st.session_state.trigger_report_generation = True
-                            # No data_path, report will be more descriptive of the plot image context
-                            st.session_state.report_target_data_path = None
-                            st.session_state.report_target_plot_path = executed_res["plot_path"]  # Pass plot path
                             st.session_state.report_target_query = original_query
                             st.rerun()
-
+                    else:
+                        if st.button(f"📄 Generate Descriptive Report for Plot##{i}", key=f"report_plot_desc_btn_{i}"):
+                            st.session_state.trigger_report_generation = True
+                            st.session_state.report_target_data_path = None
+                            st.session_state.report_target_plot_path = executed_res["plot_path"]
+                            st.session_state.report_target_query = original_query
+                            st.rerun()
                 else:
                     st.warning(f"Plot image not found at path: {executed_res['plot_path']}")
 
-            elif res_type == "text":  # Simple text output from code execution
+            elif res_type == "text":
                 st.markdown(f"**Execution Output:**\n```\n{executed_res.get('value', 'No textual output.')}\n```")
 
-            elif res_type == "report_generated":  # Special type for after report is made
+            elif res_type == "report_generated":
                 if executed_res.get("report_path") and os.path.exists(executed_res["report_path"]):
                     st.markdown(f"_Report saved to: `{os.path.abspath(executed_res['report_path'])}`_")
 
-            # Common "Judge this Analysis" button if code was generated
-            # current_analysis_artifacts should be populated by the code execution step
             artifacts_for_judging = st.session_state.get("current_analysis_artifacts", {})
             can_judge = artifacts_for_judging.get("generated_code") and \
                         (artifacts_for_judging.get("executed_data_path") or artifacts_for_judging.get(
-                            "plot_image_path") or executed_res.get("type") == "text")
+                            "plot_image_path") or executed_res.get("type") == "text" or artifacts_for_judging.get(
+                            "executed_text_output"))
 
             if can_judge:
                 if st.button(f"⚖️ Judge this Analysis by {st.session_state.selected_judge_model}##{i}",
                              key=f"judge_btn_{i}"):
                     st.session_state.trigger_judging = True
-                    # The original query that led to code generation is already in current_analysis_artifacts
                     st.rerun()
 
-        # Displaying critique if it exists in the message
         if message["role"] == "assistant" and "critique_text" in message:
             with st.expander(f"View Critique by {st.session_state.selected_judge_model}", expanded=True):
                 st.markdown(message["critique_text"])
 
 # --- Report Generation Logic ---
 if st.session_state.get("trigger_report_generation", False):
-    st.session_state.trigger_report_generation = False  # Reset trigger
+    st.session_state.trigger_report_generation = False
     data_path_for_report = st.session_state.get("report_target_data_path")
-    plot_path_for_report = st.session_state.get("report_target_plot_path")  # For plot-descriptive reports
+    plot_path_for_report = st.session_state.get("report_target_plot_path")
     query_that_led_to_data = st.session_state.report_target_query
 
     worker_llm = get_llm_instance(st.session_state.selected_worker_model)
 
-    # Ensure necessary components are available
     if not worker_llm or not st.session_state.data_summary:
         st.error("Cannot generate report: LLM or original data summary missing.")
         st.rerun()
-    if not data_path_for_report and not plot_path_for_report:  # Must have at least one
+    if not data_path_for_report and not plot_path_for_report:
         st.error("Cannot generate report: Target data or plot path missing.")
         st.rerun()
 
@@ -678,7 +660,7 @@ if st.session_state.get("trigger_report_generation", False):
                 csv_content_for_report = f.read()
         except Exception as e:
             st.error(f"Error reading data file for report: {e}")
-            st.rerun()  # Stop if data can't be read
+            st.rerun()
 
     with st.chat_message("assistant"):
         report_spinner_msg_container = st.empty()
@@ -689,35 +671,37 @@ if st.session_state.get("trigger_report_generation", False):
             try:
                 memory_context = st.session_state.lc_memory.load_memory_variables({})
                 report_prompt_inputs = {
-                    "table_data_csv": csv_content_for_report,  # Will be "N/A..." if plot-only report
+                    "table_data_csv": csv_content_for_report,
                     "original_data_summary": json.dumps(st.session_state.data_summary, indent=2),
                     "user_query_that_led_to_data": query_that_led_to_data,
                     "chat_history": memory_context.get("chat_history", "")
                 }
-                # If it's a plot-descriptive report, adjust prompt or add info
-                # For now, the same prompt is used; it should be robust enough if table_data_csv is "N/A"
-                # and the user query mentions a plot.
 
                 formatted_prompt = report_generation_prompt_template.format_prompt(**report_prompt_inputs)
-                response = worker_llm.invoke(formatted_prompt.to_string())
-                report_text = response.content if hasattr(response, 'content') else response.get('text', str(response))
+
+                response_obj = worker_llm.invoke(formatted_prompt)  # Use .to_string() if it's a PromptValue
+                if hasattr(response_obj, 'content'):
+                    report_text = response_obj.content
+                elif isinstance(response_obj, dict) and 'text' in response_obj:
+                    report_text = response_obj['text']
+                else:
+                    report_text = str(response_obj)
 
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                base_filename = f"report_for_{query_that_led_to_data[:20].replace(' ', '_')}_{timestamp}.txt"
+                base_filename = f"report_for_{query_that_led_to_data[:20].replace(' ', '_').replace('/', '_')}_{timestamp}.txt"  # Sanitize filename
                 filepath = os.path.join(TEMP_DATA_STORAGE, base_filename)
                 with open(filepath, "w", encoding='utf-8') as f:
                     f.write(report_text)
 
-                # Update current_analysis_artifacts with the generated report
                 st.session_state.current_analysis_artifacts["generated_report_path"] = filepath
                 st.session_state.current_analysis_artifacts[
-                    "report_query"] = query_that_led_to_data  # The query that this report addresses
+                    "report_query"] = query_that_led_to_data
 
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": f"📊 **Report by {st.session_state.selected_worker_model} for query '{query_that_led_to_data}':**\n\n{report_text}",
-                    "original_user_query": query_that_led_to_data,  # Keep track of original query for this message
-                    "executed_result": {  # This helps the UI know a report was just made
+                    "original_user_query": query_that_led_to_data,
+                    "executed_result": {
                         "type": "report_generated",
                         "report_path": filepath,
                         "data_source_path": data_path_for_report if data_path_for_report else "N/A (Plot Description)",
@@ -733,19 +717,17 @@ if st.session_state.get("trigger_report_generation", False):
             except Exception as e:
                 st.error(f"Error generating report: {e}")
                 st.session_state.messages.append({"role": "assistant", "content": f"Error generating report: {e}"})
-                report_spinner_msg_container.empty()  # Clear spinner message on error
+                report_spinner_msg_container.empty()
                 st.rerun()
-    # Clear plot_path_for_report after use
     if "report_target_plot_path" in st.session_state:
         del st.session_state.report_target_plot_path
 
 # --- Judging Logic ---
 if st.session_state.get("trigger_judging", False):
-    st.session_state.trigger_judging = False  # Reset trigger
+    st.session_state.trigger_judging = False
     artifacts = st.session_state.current_analysis_artifacts
     judge_llm = get_llm_instance(st.session_state.selected_judge_model)
 
-    # The original query that led to these artifacts should be in 'artifacts'
     original_query_for_artifacts = artifacts.get("original_user_query", "Unknown original query for these artifacts")
 
     if not judge_llm:
@@ -754,7 +736,6 @@ if st.session_state.get("trigger_judging", False):
     if not artifacts.get("generated_code"):
         st.error("Cannot perform critique: Generated Python code artifact is missing.")
         st.rerun()
-    # It's okay if data or report is missing, critique should note that.
 
     try:
         code_content = artifacts.get("generated_code", "No code was generated or found.")
@@ -763,12 +744,13 @@ if st.session_state.get("trigger_judging", False):
         if artifacts.get("executed_data_path") and os.path.exists(artifacts["executed_data_path"]):
             with open(artifacts["executed_data_path"], 'r', encoding='utf-8') as f:
                 data_content = f.read()
-        elif artifacts.get("executed_text_output"):  # If code produced text output directly
+        elif artifacts.get("executed_text_output"):
             data_content = f"Text output from code: {artifacts.get('executed_text_output')}"
 
         report_content = "No report was generated or found for this analysis cycle."
         if artifacts.get("generated_report_path") and os.path.exists(artifacts["generated_report_path"]):
-            with open(artifacts["generated_report_path"], 'r', encoding='utf-f8') as f:  # Typo: utf-8
+            # FIX: Corrected encoding from utf-f8 to utf-8
+            with open(artifacts["generated_report_path"], 'r', encoding='utf-8') as f:
                 report_content = f.read()
         elif artifacts.get("report_query") and not artifacts.get("generated_report_path"):
             report_content = f"A report was expected for the query '{artifacts.get('report_query')}' but not found."
@@ -787,29 +769,34 @@ if st.session_state.get("trigger_judging", False):
             with st.spinner("Generating critique..."):
                 judging_inputs = {
                     "python_code": code_content,
-                    "data_csv_content": data_content,  # This is content, not path
-                    "report_text_content": report_content,  # This is content, not path
+                    "data_csv_content": data_content,
+                    "report_text_content": report_content,
                     "original_user_query": original_query_for_artifacts,
                     "data_summary": json.dumps(st.session_state.data_summary,
                                                indent=2) if st.session_state.data_summary else "N/A",
-                    "plot_image_path": plot_image_actual_path,  # Actual path for judge's context
-                    "plot_info": plot_info_for_judge  # Descriptive text for the prompt
+                    "plot_image_path": plot_image_actual_path,
+                    "plot_info": plot_info_for_judge
                 }
                 formatted_judging_prompt = judging_prompt_template.format_prompt(**judging_inputs)
-                critique_response = judge_llm.invoke(formatted_judging_prompt.to_string())
-                critique_text = critique_response.content if hasattr(critique_response,
-                                                                     'content') else critique_response.get('text',
-                                                                                                           str(critique_response))
+
+                critique_response_obj = judge_llm.invoke(formatted_judging_prompt)
+                if hasattr(critique_response_obj, 'content'):
+                    critique_text = critique_response_obj.content
+                elif isinstance(critique_response_obj, dict) and 'text' in critique_response_obj:
+                    critique_text = critique_response_obj['text']
+                else:
+                    critique_text = str(critique_response_obj)
 
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                critique_filename = f"critique_on_{original_query_for_artifacts[:20].replace(' ', '_')}_{timestamp}.txt"
+                critique_filename = f"critique_on_{original_query_for_artifacts[:20].replace(' ', '_').replace('/', '_')}_{timestamp}.txt"  # Sanitize filename
                 critique_filepath = os.path.join(TEMP_DATA_STORAGE, critique_filename)
-                with open(critique_filepath, "w", encoding='utf-8') as f: f.write(critique_text)
+                with open(critique_filepath, "w", encoding='utf-8') as f:
+                    f.write(critique_text)
 
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": f"⚖️ **Critique by {st.session_state.selected_judge_model} for analysis of '{original_query_for_artifacts}' (saved to `{os.path.abspath(critique_filepath)}`):**",
-                    "critique_text": critique_text  # This will be displayed by the chat loop
+                    "critique_text": critique_text
                 })
                 st.session_state.lc_memory.save_context(
                     {
@@ -821,7 +808,7 @@ if st.session_state.get("trigger_judging", False):
     except Exception as e:
         st.error(f"Error during critique generation: {e}")
         st.session_state.messages.append({"role": "assistant", "content": f"Error generating critique: {e}"})
-        if 'critique_spinner_msg_container' in locals():
+        if 'critique_spinner_msg_container' in locals() and critique_spinner_msg_container is not None:
             critique_spinner_msg_container.empty()
         st.rerun()
 
@@ -831,7 +818,6 @@ if user_query := st.chat_input("Ask for analysis (Worker Model will generate and
     with st.chat_message("user"):
         st.markdown(user_query)
 
-    # Ensure data is loaded before attempting code generation
     if st.session_state.current_dataframe is None or st.session_state.data_summary is None:
         st.warning("Please upload and process a CSV file first before asking for analysis.")
         st.session_state.messages.append(
@@ -847,14 +833,12 @@ if user_query := st.chat_input("Ask for analysis (Worker Model will generate and
         st.rerun()
 
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()  # For dynamic updates: Code -> Executing -> Result
+        message_placeholder = st.empty()
         generated_code_string = ""
-        assistant_base_content = ""  # Will hold the "Generated Code" part
+        assistant_base_content = ""
 
-        # Clear previous cycle's specific artifacts before generating new ones for this query
-        # Keep general things like data_summary, dataframe.
         st.session_state.current_analysis_artifacts = {
-            "original_user_query": user_query  # Store the current query that will lead to artifacts
+            "original_user_query": user_query
         }
 
         message_placeholder.markdown(
@@ -868,21 +852,23 @@ if user_query := st.chat_input("Ask for analysis (Worker Model will generate and
                     "chat_history": memory_context.get("chat_history", "")
                 }
                 formatted_prompt = code_generation_prompt_template.format_prompt(**prompt_inputs)
-                response = worker_llm.invoke(formatted_prompt.to_string())
-                generated_code_string = response.content if hasattr(response, 'content') else response.get('text',
-                                                                                                           str(response))
 
-                # Clean up potential markdown code block fences
+                response_obj = worker_llm.invoke(formatted_prompt)
+                if hasattr(response_obj, 'content'):
+                    generated_code_string = response_obj.content
+                elif isinstance(response_obj, dict) and 'text' in response_obj:
+                    generated_code_string = response_obj['text']
+                else:
+                    generated_code_string = str(response_obj)
+
                 if generated_code_string.startswith("```python"):
                     generated_code_string = generated_code_string[len("```python"):].strip()
-                elif generated_code_string.startswith("```"):  # More general case
+                elif generated_code_string.startswith("```"):
                     generated_code_string = generated_code_string[len("```"):].strip()
                 if generated_code_string.endswith("```"):
                     generated_code_string = generated_code_string[:-len("```")].strip()
 
                 st.session_state.current_analysis_artifacts["generated_code"] = generated_code_string
-                # "original_user_query" already set when artifacts dict was initialized for this cycle
-
                 assistant_base_content = f"🔍 **Generated Python Code by {st.session_state.selected_worker_model} for query '{user_query}':**\n```python\n{generated_code_string}\n```\n"
                 message_placeholder.markdown(assistant_base_content + "\n⏳ Now executing this code locally...")
 
@@ -892,22 +878,21 @@ if user_query := st.chat_input("Ask for analysis (Worker Model will generate and
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
                 st.session_state.lc_memory.save_context({"user_query": user_query},
                                                         {"output": f"Code Generation Error: {e}"})
-                st.rerun()  # Stop if code generation fails
+                st.rerun()
 
-        if generated_code_string:  # Proceed to execution only if code was generated
+        if generated_code_string:
             current_assistant_response_message = {
                 "role": "assistant",
-                "content": assistant_base_content,  # Starts with the generated code
-                "original_user_query": user_query  # Important for linking judge/report buttons later
+                "content": assistant_base_content,
+                "original_user_query": user_query
             }
 
             with st.spinner("Executing generated code locally... Please wait."):
                 execution_result = code_executor.execute_code(generated_code_string, st.session_state.current_dataframe)
 
-                # Update current_analysis_artifacts with paths from execution
-                if execution_result.get("data_path"):  # CSV from table or plot data
+                if execution_result.get("data_path"):
                     st.session_state.current_analysis_artifacts["executed_data_path"] = execution_result["data_path"]
-                if execution_result.get("plot_path"):  # Path to the plot image
+                if execution_result.get("plot_path"):
                     st.session_state.current_analysis_artifacts["plot_image_path"] = execution_result["plot_path"]
                 if execution_result.get("type") == "text" and execution_result.get("value"):
                     st.session_state.current_analysis_artifacts["executed_text_output"] = execution_result.get("value")
@@ -916,13 +901,11 @@ if user_query := st.chat_input("Ask for analysis (Worker Model will generate and
                 if execution_result["type"] == "error":
                     current_assistant_response_message[
                         "content"] += f"\n⚠️ **Execution Error:**\n```\n{execution_result['message']}\n```"
-                    llm_memory_output_for_code_exec = f"Execution Error: {execution_result['message'][:100]}..."  # Log snippet
+                    llm_memory_output_for_code_exec = f"Execution Error: {execution_result['message'][:100]}..."
                 else:
                     current_assistant_response_message["content"] += "\n✅ **Code Executed Successfully!**"
-                    # Pass the entire execution_result to the message for the UI to handle display
                     current_assistant_response_message["executed_result"] = execution_result
 
-                    # Add file save paths to the message content for user visibility
                     if execution_result.get("data_path"):
                         current_assistant_response_message[
                             "content"] += f"\n💾 Data from analysis saved to: `{os.path.abspath(execution_result['data_path'])}`"
@@ -930,19 +913,17 @@ if user_query := st.chat_input("Ask for analysis (Worker Model will generate and
                         current_assistant_response_message[
                             "content"] += f"\n🖼️ Plot image saved to: `{os.path.abspath(execution_result['plot_path'])}`"
 
-                    # Determine memory output based on success type
                     if execution_result["type"] == "table":
                         llm_memory_output_for_code_exec = f"Table result saved: {os.path.basename(execution_result['data_path'])}"
                     elif execution_result["type"] == "plot":
                         llm_memory_output_for_code_exec = f"Plot image saved: {os.path.basename(execution_result['plot_path'])}"
-                        if execution_result.get("data_path"):  # If plot also had data CSV
+                        if execution_result.get("data_path"):
                             llm_memory_output_for_code_exec += f" (with data: {os.path.basename(execution_result['data_path'])})"
                     elif execution_result["type"] == "text":
                         llm_memory_output_for_code_exec = f"Text result: {execution_result['value'][:50]}..."
                     else:
                         llm_memory_output_for_code_exec = "Code executed, unknown result type for memory log."
 
-                # Save context to Langchain memory including generated code and execution outcome
                 st.session_state.lc_memory.save_context(
                     {
                         "user_query": user_query + "\n---Generated Code---\n" + generated_code_string + "\n---End Code---"},
