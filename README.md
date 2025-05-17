@@ -92,6 +92,7 @@ streamlit run simplified_data_agent_streamlit_v3_enhanced.py
 
 🖼️ 系統架構圖（Framework）
 
+![AI 分析架構圖](https://github.com/DrChunChihChen/Gemini_agent/raw/main/FRAMWORK.jpg)
 
 
 🔐 安全提醒
