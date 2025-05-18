@@ -1,130 +1,34 @@
-# Gemini_agent
-繁體中文）
+# Gemini_agent (繁體中文)
 
-🔍 專案簡介
+本專案是一個互動式CSV數據分析工具，採用Streamlit框架，並整合Google Gemini AI模型，旨在協助使用者快速理解數據、產生分析策略、執行分析並獲得報告與評價。
 
-本應用程式為一款基於 Streamlit 的互動式資料分析工具，結合 Google Gemini 2.0 Flash / Flash Lite 模型，讓使用者可：
+## 🌟 特色亮點
 
-上傳 CSV 檔案
+* **CDO引導的分析流程**：由AI扮演的數據長(CDO)首先對數據進行初步描述與品質評估，接著由其他AI部門主管(CEO, CFO, CTO, COO, CMO)提供觀點，最後CDO整合所有資訊提出5項可執行的分析策略（聚焦於視覺化、表格與描述性方法）。
+* **角色導向分析**：模擬多部門主管視角，提供多元化的分析切入點。
+* **自動化程式碼生成與執行**：根據使用者查詢或AI建議的策略，自動生成Python分析程式碼並執行。
+* **多樣化產出**：支援圖表、表格、文字報告的產出。
+* **AI評審機制**：由獨立的AI評審模型對分析結果進行批判性評估。
+* **完整報告匯出**：可將分析目標、CDO數據品質報告、圖表、相關數據、分析報告及最終評論匯出為單一PDF檔案。
+* **模型彈性切換**：使用者可自由選擇用於分析執行和評審的AI模型。
+* **上下文記憶**：在對話過程中保持記憶，使分析更連貫。
 
-根據資料產生多部門主管觀點（CEO、CFO、CTO、COO、CMO）
+## 🎬 操作演示
 
-彙整 5 個可執行的分析建議
+<a href="https://www.youtube.com/watch?v=YOUTUBE_VIDEO_ID_PLACEHOLDER" target="_blank">
+ <img src="https://img.youtube.com/vi/YOUTUBE_VIDEO_ID_PLACEHOLDER/0.jpg" alt="操作演示影片" style="width:560px;height:315px;" />
+</a>
 
-自動產生對應的 Python 程式碼並執行
+[點此觀看操作演示影片](https://www.youtube.com/watch?v=o7GoR2CViss) ## 🧠 使用到的 AI 模型
 
-產出報表或繪圖
+| 模型角色     | 模型名稱              | 說明                                         |
+| :----------- | :-------------------- | :------------------------------------------- |
+| CDO/分析執行者 | gemini-2.0-flash-lite | 進行初步數據描述、產生分析視角、程式碼、報告 |
+| 分析評審者   | gemini-2.0-flash      | 提供更完整、深入的批判與建議                 |
 
-最後由另一個 LLM 擔任 "評審" 提出批判建議
+*註：如未設定 API 金鑰，則將以 `PlaceholderLLM` 模擬模型行為。*
 
-🧠 使用到的 AI 模型
+## 🛠️ 安裝方式
 
-模型角色
-
-模型名稱
-
-說明
-
-分析執行者
-
-gemini-2.0-flash-lite
-
-快速產生分析視角、程式碼、報告
-
-分析評審者
-
-gemini-2.0-flash
-
-提供更完整、深入的批判與建議
-
-如未設定 API 金鑰，則將以 PlaceholderLLM 模擬模型行為。
-
-🛠️ 安裝方式
-
-pip install streamlit pandas matplotlib seaborn langchain-google-genai langchain-core
-
-📂 檔案結構
-
-simplified_data_agent_streamlit_v3_enhanced.py  # 主程式碼
-/temp_data_simplified_agent/                    # 執行後自動建立，儲存暫存圖表/報告/結果
-
-🚀 如何使用
-
-啟動應用：
-
-streamlit run simplified_data_agent_streamlit_v3_enhanced.py
-
-設定 Google Gemini API 金鑰：
-
-建議設定於 st.secrets 或系統環境變數 LLM_API_KEY
-
-於介面左側：
-
-選擇 Worker 與 Judge 模型（例如 gemini-2.0-flash-lite / flash）
-
-上傳你的 CSV 檔案
-
-程式將：
-
-產生多部門主管觀點
-
-整合分析策略建議
-
-根據你提出的分析問題產生程式碼並執行
-
-顯示表格、圖片或文字結果
-
-提供自動產生報表
-
-按一下按鈕讓 Judge 模型進行批判分析
-
-🧱 技術架構
-
-📦 Streamlit：建構 UI + 狀態管理
-
-🧠 LangChain + Gemini API：提示設計與記憶
-
-📈 Matplotlib / Seaborn：產生圖表
-
-📊 Pandas：資料整理與分析
-
-⚙️ Exec()：執行 AI 產生的程式碼（⚠️ 僅供開發/教育用途）
-
-🖼️ 系統架構圖（Framework）
-
-![AI 分析架構圖](https://github.com/DrChunChihChen/Gemini_agent/raw/main/FRAMWORK.jpg)
-
-
-🔐 安全提醒
-
-本應用會使用 exec() 執行 LLM 所產生的 Python 程式碼。
-
-僅供開發與展示用途，勿部署於公開或不可信環境。
-
-💡 特色亮點
-
-支援部門角色導向分析
-
-即時產出 Python 程式與執行結果
-
-支援圖表、表格、報告與批判全流程
-
-模型自由切換、記憶上下文脈絡
-
-🤝 貢獻方式
-
-歡迎 pull request 或 issue：優化 prompt、強化安全性、模組化功能皆可。
-
-🧪 測試建議
-
-測試資料建議含有：分類欄位、數值欄位、時間欄位
-
-建議逐步嘗試：
-
-上傳資料 → 看觀點
-
-輸入分析問題 → 產程式碼與結果
-
-點報告與評審按鈕 → 檢查內容
-
-<iframe width="560" height="315" src="https://www.youtube.com/embed/o7GoR2CViss?si=X6D4JGZkd7lYYU-u" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+```bash
+pip install streamlit pandas matplotlib seaborn langchain-google-genai langchain-core reportlab
