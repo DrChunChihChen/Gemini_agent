@@ -16,7 +16,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
 
 # --- Configuration ---
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "AIzaSyB4nEiRBn615LY4zzcqYGgKz2JiFp_1cYs")  # Use st.secrets for deployment
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "請輸入你的API")  # Use st.secrets for deployment
 TEMP_DATA_STORAGE = "temp_data_simplified_agent/"
 os.makedirs(TEMP_DATA_STORAGE, exist_ok=True)
 
