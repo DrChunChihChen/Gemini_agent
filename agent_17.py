@@ -28,7 +28,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
 
 # --- Configuration ---
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "AIzaSyDh5BmJ9uuTiWHXCqljIrHHeSrUr_UkV5E")  # Default API Key
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "API PLZ")  # Default API Key
 # Updated TEMP_DATA_STORAGE to include "AI analysis" subfolder
 TEMP_DATA_STORAGE = "temp_data_simplified_agent/AI analysis/"
 os.makedirs(TEMP_DATA_STORAGE, exist_ok=True)
