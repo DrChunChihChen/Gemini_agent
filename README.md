@@ -126,3 +126,5 @@ streamlit run simplified_data_agent_streamlit_v3_enhanced.py
 輸入分析問題 → 產程式碼與結果
 
 點報告與評審按鈕 → 檢查內容
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/o7GoR2CViss?si=X6D4JGZkd7lYYU-u" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
